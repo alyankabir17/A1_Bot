@@ -15,6 +15,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
   - [CSV Format (Recommended)](#csv-format-recommended)
   - [JSON Format](#json-format)
   - [Configuration Fields](#configuration-fields)
+  - [Exam Schedule (Multi-City)](#exam-schedule-multi-city)
 - [Usage](#usage)
   - [Basic Run](#basic-run)
   - [Scheduled Monitoring](#scheduled-monitoring)
@@ -47,7 +48,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 | Feature | Description |
 |---|---|
 | **Slot Monitoring** | Continuously polls the Goethe exam finder page for bookable slots |
-| **City Preference** | Prioritises your preferred exam center (defaults to Islamabad) |
+| **Date-Based City Selection** | Automatically targets the correct exam center based on your exam schedule (e.g. Lahore on Mar 13, Karachi on Mar 27) |
 | **Auto Form Fill** | Pre-fills registration fields (name, passport, DOB, email, phone, etc.) |
 | **Burst Mode** | Fast-polls around the exact booking-open time for maximum responsiveness |
 | **Human-Like Behavior** | Randomised delays (1.5 – 5.5s), mouse jitter, and natural click patterns |
@@ -89,6 +90,12 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 └────────┬───────────┘               │
          │                           │
          ▼                           │
+┌────────────────────┐               │
+│  Resolve target    │               │
+│  city from schedule│               │
+└────────┬───────────┘               │
+         │                           │
+         ▼                           │
 ┌────────────────────┐     No        │
 │  Detect clickable  ├──────────────►│
 │  "Book" buttons?   │   (sleep/poll)│
@@ -96,7 +103,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
          │ Yes                       │
          ▼                           │
 ┌────────────────────┐               │
-│  Click preferred   │               │
+│  Click matched     │               │
 │  city slot         │               │
 └────────┬───────────┘               │
          │
@@ -168,8 +175,8 @@ The bot reads your personal data from a config file to auto-fill the registratio
 Create a `config.csv` file:
 
 ```csv
-full_name,passport_number,date_of_birth,gender,nationality,email,phone,city_preferred,preferred_language
-John Doe,AB1234567,15/08/2000,Male,Pakistan,john@example.com,+923001234567,Islamabad,English
+full_name,passport_number,date_of_birth,gender,nationality,email,phone,preferred_language,exam_schedule
+John Doe,AB1234567,15/08/2000,Male,Pakistan,john@example.com,+923001234567,English,2026-03-13T10:26:00:Lahore;2026-03-27:Karachi
 ```
 
 ### JSON Format
@@ -185,8 +192,11 @@ Create a `config.json` file:
   "nationality": "Pakistan",
   "email": "john@example.com",
   "mobile": "+923001234567",
-  "preferred_center": "Islamabad",
-  "exam_language": "English"
+  "exam_language": "English",
+  "exam_schedule": [
+    {"date": "2026-03-13", "time": "10:26:00", "city": "Lahore"},
+    {"date": "2026-03-27", "city": "Karachi"}
+  ]
 }
 ```
 
@@ -201,10 +211,47 @@ Create a `config.json` file:
 | `gender` | No | Male / Female / Other | — |
 | `nationality` | No | Your nationality | — |
 | `phone` | No | Phone number with country code | `mobile` |
-| `city_preferred` | No | Preferred exam center (e.g. Islamabad) | `preferred_center` |
+| `city_preferred` | No | Static fallback city (used only if `exam_schedule` is not set) | `preferred_center` |
 | `preferred_language` | No | Exam language (e.g. English) | `exam_language` |
+| `exam_schedule` | No | Date-to-city mapping for automatic city selection (see below) | — |
 
 > **Note:** The JSON format supports aliases (`mobile` → `phone`, `preferred_center` → `city_preferred`, `exam_language` → `preferred_language`) so you can use either naming convention.
+
+### Exam Schedule (Multi-City with Hardcoded Times)
+
+When multiple exam dates are held in different cities, use `exam_schedule` to let the bot **automatically target the correct city** based on the current date. You can also **hardcode the exact booking-open time** for each exam — the bot will automatically activate **burst mode** at that time without needing `--exam-time`.
+
+**How it works:**
+- The bot checks today's date against the schedule on every poll cycle
+- It picks the **nearest upcoming** (or today's) exam date and targets that city
+- If a `time` is set for that exam, burst mode activates automatically at that exact time
+- Once that exam date passes, it automatically switches to the next city
+- If all dates have passed, the last city is used as a fallback
+
+**Example:** Lahore on Mar 13 at 10:26, Karachi on Mar 27:
+
+| Today's Date | Bot Targets | Burst Mode |
+|---|---|---|
+| Feb 21 – Mar 13 | **Lahore** (nearest upcoming) | Activates at **10:26:00** on Mar 13 |
+| Mar 14 – Mar 27 | **Karachi** (Lahore date passed) | No burst (no time set) |
+| After Mar 27 | **Karachi** (last fallback) | — |
+
+**JSON format:**
+```json
+"exam_schedule": [
+  {"date": "2026-03-13", "time": "10:26:00", "city": "Lahore"},
+  {"date": "2026-03-27", "city": "Karachi"}
+]
+```
+
+**CSV format** (semicolon-separated `DATETIME:CITY` pairs):
+```
+2026-03-13T10:26:00:Lahore;2026-03-27:Karachi
+```
+
+> **Priority:** Hardcoded `time` in `exam_schedule` takes precedence over the `--exam-time` CLI flag. If the schedule has a time for the upcoming exam, `--exam-time` is ignored.
+>
+> `exam_schedule` also takes precedence over `city_preferred`. If `exam_schedule` is set, `city_preferred` is ignored.
 
 ---
 
@@ -231,13 +278,22 @@ The script will sleep until the specified time, then begin polling.
 
 ### Burst Mode
 
-When you know exactly when slots open, use `--exam-time` for aggressive fast-polling around that window:
+When you know exactly when slots open, burst mode fast-polls around that time.
+
+**Automatic (recommended):** Hardcode the time in `exam_schedule` (see above). The bot will auto-activate burst mode:
+
+```bash
+# Just run — burst at 10:26 on Mar 13 is already in config
+python booking_helper.py --config config.json --start-monitoring-at now
+```
+
+**Manual override:** Use `--exam-time` if you don't want to use the schedule:
 
 ```bash
 python booking_helper.py \
   --config config.csv \
   --start-monitoring-at now \
-  --exam-time 12:06:00
+  --exam-time 10:26:00
 ```
 
 Burst mode activates **5 seconds before** and stays active **50 seconds after** the specified time, polling every **3–5 seconds** (vs the normal 45s interval). During burst:
@@ -264,7 +320,7 @@ python booking_helper.py \
 | `--start-monitoring-at` | `now` | ISO datetime (local) or `now` |
 | `--poll-interval-seconds` | `45` | Seconds between each poll cycle |
 | `--use-headless` | `false` | Run Chrome in headless mode |
-| `--exam-time` | *(disabled)* | `HH:MM:SS` or ISO datetime — enables burst mode |
+| `--exam-time` | *(auto from schedule)* | `HH:MM:SS` or ISO datetime — manual override for burst mode. Ignored if `exam_schedule` has a time |
 
 ---
 
@@ -290,7 +346,10 @@ A1_Bot/
 | `monitor_and_book()` | Main polling loop with burst mode support |
 | `wait_for_finder()` | Waits for the exam finder widget to load |
 | `find_book_buttons()` | Locates clickable "Book" / "Next" buttons via XPath + CSS fallback |
-| `pick_preferred_button()` | Selects the button matching your preferred city |
+| `pick_preferred_button()` | Selects the button matching the dynamically resolved city |
+| `parse_exam_schedule()` | Parses date/time/city schedule from config string |
+| `get_scheduled_city()` | Returns the target city for the nearest upcoming exam date |
+| `get_scheduled_exam_dt()` | Returns burst-mode datetime from schedule (auto-burst) |
 | `human_move_and_click()` | Scrolls, moves mouse with jitter, and clicks |
 | `fill_registration_form()` | Auto-fills form fields, skips submit |
 | `is_blocked_response()` | Detects Cloudflare / rate-limit pages |
@@ -362,6 +421,8 @@ A `jenkinsfile` is included for Jenkins pipeline integration. Configure it to ru
 | **ChromeDriver version mismatch** | `webdriver-manager` handles this automatically. Update with `pip install -U webdriver-manager` |
 | **"Exam finder container did not load"** | The page structure may have changed. Update `SELECTOR_REFERENCE["finder_container"]` selectors |
 | **No bookable buttons found** | Exam slots may not be available yet. Check the page manually and verify the XPath in `SELECTOR_REFERENCE` |
+| **Wrong city being targeted** | Check `exam_schedule` dates in your config. The bot targets the nearest upcoming date. Run the bot to see "Exam schedule: targeting X" in logs |
+| **Wrong city being targeted** | Check `exam_schedule` dates in your config. The bot targets the nearest upcoming date. Run the bot to see "Exam schedule: targeting X" in logs |
 | **Rate-limited / blocked** | Increase `--poll-interval-seconds` (e.g. 90+). The script will auto-cooldown on 429/503 |
 | **Fields not being filled** | Update `FORM_FIELD_CANDIDATES` CSS selectors or `LABEL_KEYWORDS` to match current form |
 | **Desktop notifications not working** | Ensure `plyer` is installed. On Linux, you may need `libnotify` (`sudo apt install libnotify-bin`) |

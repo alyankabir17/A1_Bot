@@ -267,7 +267,21 @@ def load_user_data(path: str) -> Dict[str, str]:
     elif config_path.suffix.lower() == ".json":
         with config_path.open("r", encoding="utf-8") as file:
             raw = json.load(file)
-            data = {str(k).strip(): str(v).strip() for k, v in raw.items()}
+            data = {}
+            for k, v in raw.items():
+                k = str(k).strip()
+                if k == "exam_schedule" and isinstance(v, list):
+                    # Convert [{"date":"...","time":"...","city":"..."},...] to compact "DATETIME:CITY;..." string
+                    parts = []
+                    for entry in v:
+                        d = entry["date"]
+                        t = entry.get("time", "")
+                        c = entry["city"]
+                        dt_str = f"{d}T{t}" if t else d
+                        parts.append(f"{dt_str}:{c}")
+                    data[k] = ";".join(parts)
+                else:
+                    data[k] = str(v).strip()
     else:
         raise ValueError("Config must be .csv or .json")
 
@@ -286,6 +300,72 @@ def load_user_data(path: str) -> Dict[str, str]:
         raise ValueError(f"Missing required data fields: {missing}")
 
     return data
+
+
+def parse_exam_schedule(raw: str) -> List[Tuple[dt.date, Optional[dt.datetime], str]]:
+    """Parse exam schedule string into sorted list of (date, datetime_or_None, city).
+
+    Supported entry formats:
+      - YYYY-MM-DD:City              (date only, no burst time)
+      - YYYY-MM-DDTHH:MM:SS:City     (date + exact booking-open time)
+    Entries are separated by semicolons.
+    """
+    raw = raw.strip()
+    if not raw:
+        return []
+    schedule: List[Tuple[dt.date, Optional[dt.datetime], str]] = []
+    for entry in raw.split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        # Split from the RIGHT on ':' so that HH:MM:SS is preserved
+        # Possible shapes:  "2026-03-13:Lahore"  or  "2026-03-13T10:26:00:Lahore"
+        last_colon = entry.rfind(":")
+        # Walk backwards: city is always after the LAST colon IF the char before
+        # is not a digit (i.e. not part of HH:MM:SS).  Safest: split on 'T' first.
+        if "T" in entry:
+            # Has time component  e.g. "2026-03-13T10:26:00:Lahore"
+            t_pos = entry.index("T")
+            date_str = entry[:t_pos]  # "2026-03-13"
+            rest = entry[t_pos + 1:]  # "10:26:00:Lahore"
+            # City is after the last colon
+            last_colon = rest.rfind(":")
+            time_str = rest[:last_colon].strip()  # "10:26:00"
+            city = rest[last_colon + 1:].strip()  # "Lahore"
+            exam_date = dt.date.fromisoformat(date_str.strip())
+            exam_dt_val = dt.datetime.fromisoformat(f"{date_str.strip()}T{time_str}")
+            schedule.append((exam_date, exam_dt_val, city))
+        else:
+            # Date only  e.g. "2026-03-27:Karachi"
+            date_str, city = entry.split(":", 1)
+            exam_date = dt.date.fromisoformat(date_str.strip())
+            schedule.append((exam_date, None, city.strip()))
+    schedule.sort(key=lambda x: x[0])
+    return schedule
+
+
+def get_scheduled_city(schedule: List[Tuple[dt.date, Optional[dt.datetime], str]], logger: logging.Logger) -> str:
+    """Return the city for the nearest upcoming (or today's) exam date."""
+    if not schedule:
+        return ""
+    today = dt.date.today()
+    for exam_date, _, city in schedule:
+        if exam_date >= today:
+            logger.info("Exam schedule: targeting %s (exam date %s)", city, exam_date.isoformat())
+            return city
+    # All dates have passed — return the last one as fallback
+    last_date, _, last_city = schedule[-1]
+    logger.warning("All scheduled exam dates have passed. Using last: %s (%s)", last_city, last_date.isoformat())
+    return last_city
+
+
+def get_scheduled_exam_dt(schedule: List[Tuple[dt.date, Optional[dt.datetime], str]]) -> Optional[dt.datetime]:
+    """Return the burst-mode datetime for the nearest upcoming exam that has a time set."""
+    today = dt.date.today()
+    for exam_date, exam_dt_val, _ in schedule:
+        if exam_date >= today and exam_dt_val is not None:
+            return exam_dt_val
+    return None
 
 
 def random_human_delay(min_sec: float = MIN_HUMAN_DELAY, max_sec: float = MAX_HUMAN_DELAY) -> None:
@@ -411,6 +491,12 @@ def button_row_text(button: WebElement) -> str:
 
 
 def pick_preferred_button(buttons: Sequence[WebElement], preferred_city: str) -> Optional[WebElement]:
+    """Select the button whose row text contains the preferred city name.
+
+    If *preferred_city* is provided and matches a button row, that button is
+    returned.  Otherwise, the first available button is returned as a
+    fallback (no hardcoded city default).
+    """
     if not buttons:
         return None
 
@@ -420,11 +506,7 @@ def pick_preferred_button(buttons: Sequence[WebElement], preferred_city: str) ->
             if preferred in button_row_text(button):
                 return button
 
-    for city in ["islamabad", "islamabad / rawalpindi", "isb"]:
-        for button in buttons:
-            if city in button_row_text(button):
-                return button
-
+    # No preferred city matched — return first available button
     return buttons[0]
 
 
@@ -628,6 +710,13 @@ def monitor_and_book(
     consecutive_errors = 0
     page_loaded = False  # track if page is already open (for burst refresh)
 
+    # Parse exam schedule once; city is resolved dynamically each cycle
+    exam_schedule = parse_exam_schedule(user_data.get("exam_schedule", ""))
+    if exam_schedule:
+        logger.info("Exam schedule loaded: %s",
+                    ", ".join(f"{d.isoformat()}{' @ '+t.strftime('%H:%M:%S') if t else ''} -> {c}"
+                              for d, t, c in exam_schedule))
+
     while not booked:
         burst = is_burst_window(exam_dt)
 
@@ -669,7 +758,12 @@ def monitor_and_book(
             logger.info("%s Found %d clickable button(s).",
                         "BURST:" if burst else "", len(buttons))
 
-            target_button = pick_preferred_button(buttons, user_data.get("city_preferred", "islamabad"))
+            # Determine preferred city: schedule-based (date-aware) or static
+            if exam_schedule:
+                preferred_city = get_scheduled_city(exam_schedule, logger)
+            else:
+                preferred_city = user_data.get("city_preferred", "")
+            target_button = pick_preferred_button(buttons, preferred_city)
             if target_button is None:
                 if burst:
                     gap = random.uniform(BURST_POLL_MIN, BURST_POLL_MAX)
@@ -739,7 +833,23 @@ def main() -> int:
     logger.warning("Aggressive polling may cause account/IP blocks.")
 
     user_data = load_user_data(args.config)
-    exam_dt = parse_exam_time(args.exam_time)
+
+    # Log exam schedule if configured
+    if user_data.get("exam_schedule"):
+        schedule = parse_exam_schedule(user_data["exam_schedule"])
+        logger.info("Exam schedule: %s",
+                    ", ".join(f"{d.isoformat()}{' @ '+t.strftime('%H:%M:%S') if t else ''} -> {c}"
+                              for d, t, c in schedule))
+        current_city = get_scheduled_city(schedule, logger)
+        logger.info("Current target city: %s", current_city)
+
+    # Burst mode: prefer hardcoded time from exam_schedule, fall back to --exam-time CLI
+    exam_dt = None
+    if user_data.get("exam_schedule"):
+        schedule = parse_exam_schedule(user_data["exam_schedule"])
+        exam_dt = get_scheduled_exam_dt(schedule)
+    if exam_dt is None:
+        exam_dt = parse_exam_time(args.exam_time)
     if exam_dt:
         logger.info("Exam time set: %s — burst mode will activate from %s to %s",
                     exam_dt.strftime("%H:%M:%S"),
