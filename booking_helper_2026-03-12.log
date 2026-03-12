@@ -1,0 +1,57 @@
+2026-03-12 15:43:27,882 [INFO] Logging initialized. File: booking_helper_2026-03-12.log
+2026-03-12 15:43:27,882 [WARNING] Personal single-user use only. Respect Terms of Service.
+2026-03-12 15:43:27,883 [INFO] Exam schedule: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-12 15:43:27,883 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-12 15:43:27,883 [INFO] Current target city: Lahore
+2026-03-12 15:43:27,883 [INFO] Exam time: 10:26:00 — burst from 10:25:50 to 10:28:30
+2026-03-12 15:43:32,690 [INFO] Exam schedule loaded: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-12 15:43:32,690 [INFO] ══ STEP 1: Waiting for 'Book Now' button ══
+2026-03-12 15:43:32,690 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-12 15:43:37,978 [INFO] Found 0 clickable button(s).
+2026-03-12 15:43:37,979 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-12 15:43:37,979 [INFO] No slots. Next check in 47s
+2026-03-12 15:44:24,979 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-12 15:44:24,984 [ERROR] WebDriver error: Message: invalid session id: session deleted as the browser has closed the connection
+from disconnected: not connected to DevTools
+  (Session info: chrome=145.0.7632.116); For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#invalidsessionidexception
+Stacktrace:
+#0 0x58427ec2ab6a <unknown>
+#1 0x58427e63da32 <unknown>
+#2 0x58427e623693 <unknown>
+#3 0x58427e64ccc1 <unknown>
+#4 0x58427e6c16a0 <unknown>
+#5 0x58427e6dad68 <unknown>
+#6 0x58427e684c0f <unknown>
+#7 0x58427e6859d1 <unknown>
+#8 0x58427ebef6b9 <unknown>
+#9 0x58427ebf25c1 <unknown>
+#10 0x58427ebdbe29 <unknown>
+#11 0x58427ebf317e <unknown>
+#12 0x58427ebc24b0 <unknown>
+#13 0x58427ec17578 <unknown>
+#14 0x58427ec1774b <unknown>
+#15 0x58427ec291a3 <unknown>
+#16 0x7a9d8369caa4 <unknown>
+#17 0x7a9d83729c6c <unknown>
+. Backoff 5s
+2026-03-12 15:44:29,984 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-12 15:44:29,987 [ERROR] WebDriver error: Message: invalid session id; For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#invalidsessionidexception
+Stacktrace:
+#0 0x58427ec2ab6a <unknown>
+#1 0x58427e63d720 <unknown>
+#2 0x58427e683e60 <unknown>
+#3 0x58427e6b9286 <unknown>
+#4 0x58427e6b3898 <unknown>
+#5 0x58427e6b2cac <unknown>
+#6 0x58427e603055 <unknown>
+#7 0x58427ebef6b9 <unknown>
+#8 0x58427ebf25c1 <unknown>
+#9 0x58427ebdbe29 <unknown>
+#10 0x58427ebf317e <unknown>
+#11 0x58427ebc24b0 <unknown>
+#12 0x58427e600804 <unknown>
+#13 0x7a9d8362a1ca <unknown>
+#14 0x7a9d8362a28b __libc_start_main
+#15 0x58427e5bfcaa _start
+. Backoff 10s
+2026-03-12 15:44:38,937 [INFO] Interrupted by user. Exiting.

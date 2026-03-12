@@ -199,10 +199,11 @@ MIN_HUMAN_DELAY = 1.5
 MAX_HUMAN_DELAY = 5.5
 
 # Burst mode: fast polling around the exact exam booking open time
-BURST_BEFORE_SECONDS = 5      # start burst 5s before exam time
-BURST_AFTER_SECONDS = 50      # keep burst going 50s after exam time
-BURST_POLL_MIN = 3.0          # fastest burst poll interval
-BURST_POLL_MAX = 5.0          # slowest burst poll interval
+BURST_BEFORE_SECONDS = 10     # start burst 10s before exam time
+BURST_AFTER_SECONDS = 150     # keep burst active 150s after exam time
+BURST_PRE_POLL = 5.0          # refresh every 5s BEFORE exam time
+BURST_POST_POLL_MIN = 2.0     # refresh every 2-3s AFTER exam time
+BURST_POST_POLL_MAX = 3.0
 BURST_CRASH_RETRY = 1.5       # retry gap if site crashes during burst
 
 
@@ -404,6 +405,7 @@ def create_driver(use_headless: bool) -> webdriver.Chrome:
     options.add_argument("--start-maximized")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_experimental_option("detach", True)
 
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)
@@ -553,6 +555,42 @@ def wait_for_document_ready(driver: webdriver.Chrome, timeout: int = 30) -> None
             return
         time.sleep(0.5)
     raise TimeoutException("Document not ready in time.")
+
+
+def click_continue_button(driver: webdriver.Chrome, logger: logging.Logger, timeout: int = 90) -> None:
+    """Step 2: Wait for and click the 'Continue' button on the Selection page."""
+    random_human_delay(1.0, 2.5)
+    wait_for_document_ready(driver, timeout=timeout)
+    continue_xpath = (
+        "//*[self::a or self::button]"
+        "[contains(translate(normalize-space(.), "
+        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'continue')"
+        " or contains(translate(normalize-space(.), "
+        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'weiter')]"
+    )
+    wait = WebDriverWait(driver, timeout)
+    button = wait.until(EC.element_to_be_clickable((By.XPATH, continue_xpath)))
+    logger.info("'Continue' button found. Clicking...")
+    human_move_and_click(driver, button)
+
+
+def click_book_for_myself(driver: webdriver.Chrome, logger: logging.Logger, timeout: int = 90) -> None:
+    """Step 3: Wait for and click 'Book for myself' on the Participant page."""
+    random_human_delay(1.0, 2.5)
+    wait_for_document_ready(driver, timeout=timeout)
+    book_myself_xpath = (
+        "//*[self::a or self::button]"
+        "[contains(translate(normalize-space(.), "
+        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'book for myself')"
+        " or contains(translate(normalize-space(.), "
+        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'für mich buchen')"
+        " or contains(translate(normalize-space(.), "
+        "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'für mich')]"
+    )
+    wait = WebDriverWait(driver, timeout)
+    button = wait.until(EC.element_to_be_clickable((By.XPATH, book_myself_xpath)))
+    logger.info("'Book for myself' button found. Clicking...")
+    human_move_and_click(driver, button)
 
 
 def find_by_css_candidates(container: webdriver.Chrome, selectors: Sequence[str]) -> Optional[WebElement]:
@@ -706,9 +744,15 @@ def monitor_and_book(
     exam_dt: Optional[dt.datetime],
     logger: logging.Logger,
 ) -> None:
-    booked = False
+    """
+    3-step booking automation:
+      Step 1: Refresh & click 'Book Now'
+      Step 2: Click 'Continue'
+      Step 3: Click 'Book for myself' -> STOP (user logs in manually)
+    """
     consecutive_errors = 0
-    page_loaded = False  # track if page is already open (for burst refresh)
+    page_loaded = False
+    step1_done = False
 
     # Parse exam schedule once; city is resolved dynamically each cycle
     exam_schedule = parse_exam_schedule(user_data.get("exam_schedule", ""))
@@ -717,26 +761,30 @@ def monitor_and_book(
                     ", ".join(f"{d.isoformat()}{' @ '+t.strftime('%H:%M:%S') if t else ''} -> {c}"
                               for d, t, c in exam_schedule))
 
-    while not booked:
+    # ══════════════════════════════════════════════════════════════
+    # STEP 1: Refresh & Click "Book Now"
+    # ══════════════════════════════════════════════════════════════
+    logger.info("══ STEP 1: Waiting for 'Book Now' button ══")
+
+    while True:
         burst = is_burst_window(exam_dt)
 
         try:
             if burst and page_loaded:
-                # BURST MODE: just refresh — faster + avoids Cloudflare
-                logger.info("BURST: Refreshing page...")
+                logger.info("Refreshing page...")
                 driver.refresh()
             else:
-                logger.info("Opening monitor page: %s", MAIN_URL)
+                logger.info("Opening: %s", MAIN_URL)
                 driver.get(MAIN_URL)
 
             wait_for_document_ready(driver, timeout=15 if burst else 30)
             page_loaded = True
 
-            # Skip block detection during burst — can't afford the cooldown
+            # Skip block detection during burst
             if not burst and is_blocked_response(driver):
                 cooldown = long_cooldown_seconds()
-                logger.warning("Detected possible block. Cooling down for %ss", cooldown)
-                notify("Booking helper paused", f"Blocked detected. Waiting {cooldown//60} min.", logger)
+                logger.warning("Block detected. Cooling down %ss", cooldown)
+                notify("Blocked", f"Waiting {cooldown // 60} min.", logger)
                 time.sleep(cooldown)
                 page_loaded = False
                 continue
@@ -745,96 +793,127 @@ def monitor_and_book(
                 wait_for_finder(driver, timeout=10 if burst else 40)
             except TimeoutException:
                 if burst:
-                    # Site may be crashed/slow — retry immediately
-                    logger.warning("BURST: Finder not loaded (site may be overloaded). Retrying in %.1fs", BURST_CRASH_RETRY)
+                    logger.warning("Finder not loaded (site overloaded). Retrying in %.1fs", BURST_CRASH_RETRY)
                     time.sleep(BURST_CRASH_RETRY)
                     continue
                 raise
 
-            if not burst:
-                random_human_delay(0.5, 1.5)
-
             buttons = find_book_buttons(driver)
-            logger.info("%s Found %d clickable button(s).",
-                        "BURST:" if burst else "", len(buttons))
+            logger.info("Found %d clickable button(s).", len(buttons))
 
-            # Determine preferred city: schedule-based (date-aware) or static
+            # Determine preferred city
             if exam_schedule:
                 preferred_city = get_scheduled_city(exam_schedule, logger)
             else:
                 preferred_city = user_data.get("city_preferred", "")
             target_button = pick_preferred_button(buttons, preferred_city)
+
             if target_button is None:
-                if burst:
-                    gap = random.uniform(BURST_POLL_MIN, BURST_POLL_MAX)
-                    logger.info("BURST: No slot yet. Refreshing in %.1fs", gap)
-                    time.sleep(gap)
+                # No slot yet — refresh interval per spec
+                now = dt.datetime.now()
+                if burst and exam_dt and now < exam_dt:
+                    # Before exam time -> every 5 seconds
+                    gap = BURST_PRE_POLL
+                    logger.info("Pre-exam: no slot. Refresh in %.1fs", gap)
+                elif burst:
+                    # After exam time -> every 2-3 seconds
+                    gap = random.uniform(BURST_POST_POLL_MIN, BURST_POST_POLL_MAX)
+                    logger.info("Post-exam: no slot. Refresh in %.1fs", gap)
                 else:
                     jitter = random.randint(-10, 15)
-                    sleep_for = max(20, poll_interval_seconds + jitter)
-                    logger.info("No bookable slots yet. Next check in %ss", sleep_for)
-                    time.sleep(sleep_for)
+                    gap = max(20, poll_interval_seconds + jitter)
+                    logger.info("No slots. Next check in %ss", gap)
+                time.sleep(gap)
                 continue
 
-            # SLOT FOUND — click immediately
-            logger.info("Bookable slot detected! Clicking now.")
-            notify("Slot found", "Bookable slot detected. Clicking...", logger)
+            # ── SLOT FOUND -> click immediately ──
+            logger.info("★ STEP 1 DONE: 'Book Now' button found! Clicking...")
+            notify("Slot found!", "Clicking Book Now...", logger)
             human_move_and_click(driver, target_button)
             enforce_single_tab(driver)
-
-            random_human_delay(2.0, 5.0)
-            wait_for_document_ready(driver, timeout=45)
-
-            filled, skipped = fill_registration_form(driver, user_data, logger)
-
-            message = f"Form reached and filled (filled={filled}, skipped={skipped}). Please review and submit manually."
-            notify("Form prepared", message, logger)
-
-            booked = True
-            logger.info("Run complete. Manual submit pending by user.")
+            consecutive_errors = 0
+            step1_done = True
+            break  # Exit Step 1 loop
 
         except (TimeoutException, StaleElementReferenceException, NoSuchElementException) as exc:
             consecutive_errors += 1
             if burst:
-                logger.warning("BURST: Selenium error: %s. Retrying in %.1fs", exc, BURST_CRASH_RETRY)
+                logger.warning("Selenium error: %s. Retrying in %.1fs", exc, BURST_CRASH_RETRY)
                 time.sleep(BURST_CRASH_RETRY)
             else:
                 delay = bounded_backoff(consecutive_errors)
-                logger.warning("Recoverable Selenium error: %s. Backoff %ss", exc, delay)
+                logger.warning("Selenium error: %s. Backoff %ss", exc, delay)
                 time.sleep(delay)
             page_loaded = False
         except WebDriverException as exc:
             consecutive_errors += 1
             if burst:
-                logger.error("BURST: WebDriver error: %s. Retrying in %.1fs", exc, BURST_CRASH_RETRY * 2)
+                logger.error("WebDriver error: %s. Retrying in %.1fs", exc, BURST_CRASH_RETRY * 2)
                 time.sleep(BURST_CRASH_RETRY * 2)
             else:
                 delay = bounded_backoff(consecutive_errors, base=5, cap=120)
                 logger.error("WebDriver error: %s. Backoff %ss", exc, delay)
                 time.sleep(delay)
             page_loaded = False
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user. Exiting safely.")
-            break
         except Exception as exc:
             consecutive_errors += 1
             delay = BURST_CRASH_RETRY if burst else bounded_backoff(consecutive_errors, base=5, cap=120)
-            logger.exception("Critical error: %s", exc)
-            notify("Booking helper error", f"Critical error: {exc}", logger)
+            logger.exception("Error: %s", exc)
+            notify("Booking helper error", str(exc), logger)
             time.sleep(delay)
             page_loaded = False
+
+    if not step1_done:
+        return
+
+    # ══════════════════════════════════════════════════════════════
+    # STEP 2: Click "Continue"
+    # ══════════════════════════════════════════════════════════════
+    logger.info("══ STEP 2: Waiting for 'Continue' button ══")
+    try:
+        click_continue_button(driver, logger, timeout=90)
+        enforce_single_tab(driver)
+        logger.info("★ STEP 2 DONE: 'Continue' clicked.")
+    except Exception as exc:
+        logger.error("STEP 2 FAILED: %s", exc)
+        notify("Step 2 failed", f"Could not click Continue: {exc}", logger)
+        logger.info("Browser left open. Try clicking 'Continue' manually.")
+        return
+
+    # ══════════════════════════════════════════════════════════════
+    # STEP 3: Click "Book for myself" & STOP
+    # ══════════════════════════════════════════════════════════════
+    logger.info("══ STEP 3: Waiting for 'Book for myself' button ══")
+    try:
+        click_book_for_myself(driver, logger, timeout=90)
+        enforce_single_tab(driver)
+        logger.info("★ STEP 3 DONE: 'Book for myself' clicked.")
+    except Exception as exc:
+        logger.error("STEP 3 FAILED: %s", exc)
+        notify("Step 3 failed", f"Could not click 'Book for myself': {exc}", logger)
+        logger.info("Browser left open. Try clicking 'Book for myself' manually.")
+        return
+
+    # ══════════════════════════════════════════════════════════════
+    # CRITICAL STOP — All 3 steps complete
+    # ══════════════════════════════════════════════════════════════
+    logger.info("═══════════════════════════════════════════════════")
+    logger.info("ALL 3 STEPS COMPLETE. Bot is now STOPPED.")
+    logger.info("You are on the Goethe login page.")
+    logger.info("Please LOG IN and FILL THE FORM MANUALLY.")
+    logger.info("═══════════════════════════════════════════════════")
+    notify("Bot stopped - all done", "3 steps complete. Log in and fill form manually.", logger)
 
 
 def main() -> int:
     args = parse_args()
     logger = setup_logger()
 
-    logger.warning("Respect Terms of Service. Personal single-user use only.")
-    logger.warning("Aggressive polling may cause account/IP blocks.")
+    logger.warning("Personal single-user use only. Respect Terms of Service.")
 
     user_data = load_user_data(args.config)
 
-    # Log exam schedule if configured
+    # Log exam schedule
     if user_data.get("exam_schedule"):
         schedule = parse_exam_schedule(user_data["exam_schedule"])
         logger.info("Exam schedule: %s",
@@ -843,7 +922,7 @@ def main() -> int:
         current_city = get_scheduled_city(schedule, logger)
         logger.info("Current target city: %s", current_city)
 
-    # Burst mode: prefer hardcoded time from exam_schedule, fall back to --exam-time CLI
+    # Burst mode timing
     exam_dt = None
     if user_data.get("exam_schedule"):
         schedule = parse_exam_schedule(user_data["exam_schedule"])
@@ -851,7 +930,7 @@ def main() -> int:
     if exam_dt is None:
         exam_dt = parse_exam_time(args.exam_time)
     if exam_dt:
-        logger.info("Exam time set: %s — burst mode will activate from %s to %s",
+        logger.info("Exam time: %s — burst from %s to %s",
                     exam_dt.strftime("%H:%M:%S"),
                     (exam_dt - dt.timedelta(seconds=BURST_BEFORE_SECONDS)).strftime("%H:%M:%S"),
                     (exam_dt + dt.timedelta(seconds=BURST_AFTER_SECONDS)).strftime("%H:%M:%S"))
@@ -868,10 +947,26 @@ def main() -> int:
             exam_dt=exam_dt,
             logger=logger,
         )
+
+        # ── Keep browser open for manual login ──
+        logger.info("Browser is open. Press Ctrl+C when you are done.")
+        print("\n" + "=" * 55)
+        print("  BOT STOPPED. Browser is open for manual login.")
+        print("  Press Ctrl+C when you are finished.")
+        print("=" * 55 + "\n")
+        try:
+            while True:
+                time.sleep(60)
+        except KeyboardInterrupt:
+            logger.info("User finished. Closing browser.")
+
+        return 0
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user. Exiting.")
         return 0
     except Exception as exc:
-        logger.exception("Fatal error in main: %s", exc)
-        notify("Booking helper fatal error", str(exc), logger)
+        logger.exception("Fatal error: %s", exc)
+        notify("Fatal error", str(exc), logger)
         return 1
     finally:
         if driver is not None:
