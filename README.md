@@ -1,6 +1,6 @@
 # Goethe A1 Booking Helper Bot
 
-A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm) exam booking page for available **Goethe-Zertifikat A1** slots, and pre-fills the registration form on your behalf. The script **never auto-submits** — it hands control back to you for final review.
+A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm) exam booking page for available **Goethe-Zertifikat A1** slots and automates the initial booking navigation steps. The bot performs a **3-step automated flow** (Book Now → Continue → Book for Myself) and then **completely stops**, handing control to the user for manual login and form submission.
 
 ---
 
@@ -8,6 +8,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 
 - [Disclaimer](#disclaimer)
 - [Features](#features)
+- [3-Step Automation Flow](#3-step-automation-flow)
 - [How It Works](#how-it-works)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -38,7 +39,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 >
 > - You are responsible for complying with Goethe-Institut's Terms of Service, local laws, and any anti-abuse rules.
 > - Automation of booking systems may lead to account or IP bans.
-> - The script intentionally **does NOT auto-submit** the final registration form — it only monitors and pre-fills fields, then hands control back to you.
+> - The script intentionally **stops after the 3-step navigation** — it does NOT auto-submit registration forms or log in on your behalf.
 > - Use conservative polling intervals and human-like delays at all times.
 
 ---
@@ -48,6 +49,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 | Feature | Description |
 |---|---|
 | **Slot Monitoring** | Continuously polls the Goethe exam finder page for bookable slots |
+| **3-Step Auto-Navigation** | Automates Book Now → Continue → Book for Myself, then stops |
 | **Date-Based City Selection** | Automatically targets the correct exam center based on your exam schedule (e.g. Lahore on Mar 13, Karachi on Mar 27) |
 | **Auto Form Fill** | Pre-fills registration fields (name, passport, DOB, email, phone, etc.) |
 | **Burst Mode** | Fast-polls around the exact booking-open time for maximum responsiveness |
@@ -59,6 +61,37 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 | **File Upload Prompt** | Interactive prompt for passport photo/signature uploads when detected |
 | **Structured Logging** | Logs every action to both console and a daily log file |
 | **Flexible Config** | Supports both CSV and JSON configuration files |
+
+---
+
+## 3-Step Automation Flow
+
+The bot automates exactly three navigation steps, then **completely halts** so you can manually log in and fill out the form:
+
+### Step 1 — Refresh & Click "Book Now"
+- Opens the Goethe A1 booking page
+- Begins refresh logic **5–10 seconds before** the scheduled booking time
+- If the **Book** button is not visible:
+  - **Before scheduled time** → refreshes every 5 seconds
+  - **After scheduled time** → refreshes every 2–3 seconds (burst mode)
+- Once the **Book** button appears, clicks it
+
+### Step 2 — Click "Continue"
+- After clicking **Book**, the website loads the **Selection page** showing exam details
+- Waits for the page to load using explicit waits (server may be slow during booking time)
+- Locates and clicks the **Continue** button
+
+### Step 3 — Click "Book for Myself" & STOP
+- After clicking **Continue**, the **Participant page** appears
+- Locates and clicks the **Book for myself** button
+- This redirects to the **Goethe login page**
+
+### Critical Stop Point
+At this point the bot:
+- **Completely stops execution**
+- **Disables any autofill**
+- **Disables login automation**
+- The user **manually logs in and fills the form**
 
 ---
 
@@ -85,8 +118,8 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
          │
          ▼
 ┌────────────────────┐     No slots
-│  Open Goethe exam  │◄──────────────┐
-│  finder page       │               │
+│  Step 1: Open page │◄──────────────┐
+│  & refresh/poll    │               │
 └────────┬───────────┘               │
          │                           │
          ▼                           │
@@ -97,27 +130,33 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
          │                           │
          ▼                           │
 ┌────────────────────┐     No        │
-│  Detect clickable  ├──────────────►│
-│  "Book" buttons?   │   (sleep/poll)│
+│  Detect "Book Now" ├──────────────►│
+│  button?           │   (sleep/poll)│
 └────────┬───────────┘               │
          │ Yes                       │
          ▼                           │
 ┌────────────────────┐               │
-│  Click matched     │               │
-│  city slot         │               │
-└────────┬───────────┘               │
+│  Click "Book Now"  │               │
+│  for matched city  │               │
+└────────┬───────────┘
          │
          ▼
 ┌────────────────────┐
-│  Pre-fill form     │
-│  fields            │
+│  Step 2: Click     │
+│  "Continue"        │
+└────────┬───────────┘
+         │
+         ▼
+┌────────────────────┐
+│  Step 3: Click     │
+│  "Book for myself" │
 └────────┬───────────┘
          │
          ▼
 ┌────────────────────┐
 │  STOP — User       │
-│  reviews & submits │
-│  manually          │
+│  logs in & fills   │
+│  form manually     │
 └────────────────────┘
 ```
 
@@ -126,7 +165,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 ## Prerequisites
 
 - **Python 3.9+**
-- **Google Chrome** (installed on  your system)
+- **Google Chrome** (installed on your system)
 - **ChromeDriver** — managed automatically by `webdriver-manager`
 - **Linux / macOS** (Windows works too, but `setup.sh` is bash-only)
 
@@ -137,7 +176,7 @@ A Selenium-based automation tool that monitors the [Goethe-Institut Pakistan](ht
 ### Quick Setup (Linux / macOS)
 
 ```bash
-git clone https://github.com/<your-username>/A1_Bot.git
+git clone https://github.com/alyankabir17/A1_Bot.git
 cd A1_Bot
 chmod +x setup.sh
 ./setup.sh
@@ -328,13 +367,14 @@ python booking_helper.py \
 
 ```
 A1_Bot/
-├── booking_helper.py   # Main script (all logic)
-├── config.csv          # User data (CSV format)
-├── config.json         # User data (JSON format)
-├── requirements.txt    # Python dependencies
-├── setup.sh            # One-command environment setup
-├── jenkinsfile         # CI/CD pipeline definition
-└── README.md           # This file
+├── booking_helper.py                # Main script (all logic)
+├── config.csv                       # User data (CSV format)
+├── config.json                      # User data (JSON format)
+├── goethe_a1_booking_bot_update.md  # Update notes / spec
+├── requirements.txt                 # Python dependencies
+├── setup.sh                         # One-command environment setup
+├── jenkinsfile                      # CI/CD pipeline definition
+└── README.md                        # This file
 ```
 
 ### Core Functions
@@ -363,14 +403,14 @@ A1_Bot/
 The script is designed to be **polite and undetectable**:
 
 1. **Single Session** — One browser, one tab, no parallel sessions
-2. **One Slot Per Run** — Stops after finding and pre-filling one slot
+2. **One Slot Per Run** — Stops after completing the 3-step navigation
 3. **Human-Like Delays** — Random pauses (1.5–5.5s) between every interaction
 4. **Mouse Jitter** — Small random offsets on mouse movements
 5. **Backoff on Errors** — Exponential backoff (3s base, 60s cap) on failures
 6. **Rate-Limit Detection** — Detects 429/503 responses and cools down for 2–5 minutes
 7. **Cloudflare Detection** — Identifies "checking your browser" and similar pages
 8. **Anti-Automation Flags** — `--disable-blink-features=AutomationControlled`
-9. **No Auto-Submit** — The submit button is highlighted in orange but never clicked
+9. **No Auto-Submit** — Stops at the login page; never submits forms or logs in
 10. **Graceful Shutdown** — Handles `Ctrl+C` cleanly, closes browser on exit
 
 ---
@@ -398,12 +438,12 @@ The script creates a daily log file named `booking_helper_YYYY-MM-DD.log` in the
 Example log output:
 
 ```
-2026-02-21 12:06:01,234 [INFO] Opening monitor page: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
-2026-02-21 12:06:05,891 [INFO] BURST: Found 2 clickable button(s).
-2026-02-21 12:06:06,123 [INFO] Bookable slot detected! Clicking now.
-2026-02-21 12:06:12,456 [INFO] Filled field: full_name
-2026-02-21 12:06:14,789 [INFO] Filled field: email
-2026-02-21 12:06:16,012 [INFO] Form fill completed. Final submit intentionally NOT clicked.
+2026-03-13 10:25:55,234 [INFO] Opening monitor page: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:26:01,891 [INFO] BURST: Found 2 clickable button(s).
+2026-03-13 10:26:02,123 [INFO] Step 1: Clicking "Book Now" button.
+2026-03-13 10:26:05,456 [INFO] Step 2: Clicking "Continue" button.
+2026-03-13 10:26:08,789 [INFO] Step 3: Clicking "Book for myself" button.
+2026-03-13 10:26:10,012 [INFO] Navigation complete. Bot stopped. Please log in and fill the form manually.
 ```
 
 ---
@@ -421,7 +461,6 @@ A `jenkinsfile` is included for Jenkins pipeline integration. Configure it to ru
 | **ChromeDriver version mismatch** | `webdriver-manager` handles this automatically. Update with `pip install -U webdriver-manager` |
 | **"Exam finder container did not load"** | The page structure may have changed. Update `SELECTOR_REFERENCE["finder_container"]` selectors |
 | **No bookable buttons found** | Exam slots may not be available yet. Check the page manually and verify the XPath in `SELECTOR_REFERENCE` |
-| **Wrong city being targeted** | Check `exam_schedule` dates in your config. The bot targets the nearest upcoming date. Run the bot to see "Exam schedule: targeting X" in logs |
 | **Wrong city being targeted** | Check `exam_schedule` dates in your config. The bot targets the nearest upcoming date. Run the bot to see "Exam schedule: targeting X" in logs |
 | **Rate-limited / blocked** | Increase `--poll-interval-seconds` (e.g. 90+). The script will auto-cooldown on 429/503 |
 | **Fields not being filled** | Update `FORM_FIELD_CANDIDATES` CSS selectors or `LABEL_KEYWORDS` to match current form |
