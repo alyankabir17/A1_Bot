@@ -95,7 +95,7 @@ except Exception:
     notification = None
 
 
-MAIN_URL = "https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm"
+MAIN_URL = "https://www.goethe.de/ins/pk/en/spr/prf/gzb1.cfm"
 
 SELECTOR_REFERENCE = {
     "finder_container": ["#pr_finder_9523459", ".pr-finder"],
