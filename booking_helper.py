@@ -10,24 +10,21 @@ You are responsible for following Goethe-Institut website Terms of Service,
 local laws, and any anti-abuse rules. Automation can lead to account/IP blocks.
 Use conservative polling intervals and human-like delays.
 
-The script intentionally DOES NOT auto-submit the final registration form.
-It only helps monitor and pre-fill form fields, then hands control back to you.
+The script automates only the booking flow steps and then stops.
 
 Quick Start
 -----------
 1) Install Python dependencies (Python 3.9+):
    pip install -U selenium webdriver-manager plyer
 
-2) Prepare either:
-   - config.csv (recommended), or
-   - config.json
+2) Prepare config.csv
 
 3) Run:
    python booking_helper.py --config config.csv --start-monitoring-at now
 
    Example with explicit settings:
    python booking_helper.py \
-      --config config.json \
+    --config config.csv \
       --start-monitoring-at 2026-02-20T23:00:00 \
       --poll-interval-seconds 30 \
       --use-headless false
@@ -40,7 +37,6 @@ Websites change frequently. Update constants in SELECTOR_REFERENCE:
 - Finder container selectors
 - Book button XPath/CSS
 - Preferred city matching logic
-- Form field selectors in FORM_FIELD_CANDIDATES
 
 Most important selectors/XPaths used
 ------------------------------------
@@ -56,17 +52,13 @@ Most important selectors/XPaths used
 3) Fallback button selector:
    - a.standard, button.standard
 
-4) Form element lookup strategy:
-   - explicit CSS candidate list by likely id/name
-   - fallback by associated label text matching
-
 Safety guarantees in this script
 --------------------------------
 - Single browser session, single tab, no parallel sessions.
 - Books at most one slot per run.
 - Human-like delays (1.2s to 4.8s) between interactions.
 - Backoff and cooling-off on 429/503/Cloudflare-like blocking.
-- Never clicks final submit button.
+- Stops after the booking flow (no final registration form automation).
 """
 
 from __future__ import annotations
@@ -74,7 +66,6 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
-import json
 import logging
 import random
 import re
@@ -93,7 +84,6 @@ from selenium.webdriver import ActionChains
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -113,85 +103,14 @@ SELECTOR_REFERENCE = {
         "//*[self::a or self::button]"
         "[contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'book')"
         " or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'next')"
-        " or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'book now')]"
+        " or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'book now')"
+        " or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'buchen')"
+        " or contains(translate(normalize-space(.), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'weiter')]"
         "[contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'standard')]"
         "[not(contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'disabled'))]"
         "[not(contains(translate(@class, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'nicht-buchbar'))]"
     ),
     "book_button_fallback_css": "a.standard, button.standard",
-    "file_input_css": "input[type='file']",
-    # Final submit is intentionally NOT clicked.
-    "submit_buttons_css": "button[type='submit'], input[type='submit'], .submit, .btn-submit",
-}
-
-FORM_FIELD_CANDIDIDATE_HINT = (
-    "If fields are not found, update FORM_FIELD_CANDIDATES and/or label matching logic."
-)
-
-FORM_FIELD_CANDIDATES: Dict[str, List[str]] = {
-    "full_name": [
-        "input[name*='full']",
-        "input[id*='full']",
-        "input[name*='name']",
-        "input[id*='name']",
-    ],
-    "passport_number": [
-        "input[name*='passport']",
-        "input[id*='passport']",
-        "input[name*='id_number']",
-    ],
-    "date_of_birth": [
-        "input[name*='birth']",
-        "input[id*='birth']",
-        "input[placeholder*='DD']",
-        "input[placeholder*='dd']",
-    ],
-    "gender": [
-        "select[name*='gender']",
-        "select[id*='gender']",
-        "input[name*='gender']",
-    ],
-    "nationality": [
-        "input[name*='national']",
-        "select[name*='national']",
-        "input[id*='national']",
-    ],
-    "email": [
-        "input[type='email']",
-        "input[name*='mail']",
-        "input[id*='mail']",
-        "input[name*='email']",
-        "input[id*='email']",
-    ],
-    "phone": [
-        "input[type='tel']",
-        "input[name*='phone']",
-        "input[id*='phone']",
-        "input[name*='mobile']",
-        "input[id*='mobile']",
-    ],
-    "city_preferred": [
-        "select[name*='city']",
-        "select[id*='city']",
-        "input[name*='city']",
-    ],
-    "preferred_language": [
-        "select[name*='language']",
-        "select[id*='language']",
-        "input[name*='language']",
-    ],
-}
-
-LABEL_KEYWORDS = {
-    "full_name": ["full name", "name"],
-    "passport_number": ["passport", "id number"],
-    "date_of_birth": ["date of birth", "birth"],
-    "gender": ["gender", "sex"],
-    "nationality": ["nationality", "country"],
-    "email": ["email", "e-mail"],
-    "phone": ["phone", "mobile", "telephone"],
-    "city_preferred": ["city", "center", "centre", "location"],
-    "preferred_language": ["language"],
 }
 
 DEFAULT_POLL_INTERVAL = 45
@@ -240,14 +159,14 @@ def parse_bool(value: str) -> bool:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Polite Goethe A1 booking helper")
-    parser.add_argument("--config", default="config.csv", help="Path to config.csv or config.json")
+    parser.add_argument("--config", default="config.csv", help="Path to config.csv")
     parser.add_argument("--start-monitoring-at", default="now", help="ISO datetime (local) or 'now'")
     parser.add_argument("--poll-interval-seconds", type=int, default=DEFAULT_POLL_INTERVAL)
     parser.add_argument("--use-headless", type=parse_bool, default=False)
     parser.add_argument(
         "--exam-time",
-        default="",
-        help="HH:MM:SS or ISO datetime when slots open (enables burst mode). E.g. 12:06:00",
+        default="now",
+        help="'now', HH:MM:SS, or ISO datetime for burst anchor time. Default: now",
     )
 
     return parser.parse_args()
@@ -258,33 +177,15 @@ def load_user_data(path: str) -> Dict[str, str]:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
 
-    if config_path.suffix.lower() == ".csv":
-        with config_path.open("r", encoding="utf-8-sig", newline="") as file:
-            reader = csv.DictReader(file)
-            rows = list(reader)
-            if not rows:
-                raise ValueError("CSV is empty. Add one row with your data.")
-            data = {k.strip(): str(v).strip() for k, v in rows[0].items()}
-    elif config_path.suffix.lower() == ".json":
-        with config_path.open("r", encoding="utf-8") as file:
-            raw = json.load(file)
-            data = {}
-            for k, v in raw.items():
-                k = str(k).strip()
-                if k == "exam_schedule" and isinstance(v, list):
-                    # Convert [{"date":"...","time":"...","city":"..."},...] to compact "DATETIME:CITY;..." string
-                    parts = []
-                    for entry in v:
-                        d = entry["date"]
-                        t = entry.get("time", "")
-                        c = entry["city"]
-                        dt_str = f"{d}T{t}" if t else d
-                        parts.append(f"{dt_str}:{c}")
-                    data[k] = ";".join(parts)
-                else:
-                    data[k] = str(v).strip()
-    else:
-        raise ValueError("Config must be .csv or .json")
+    if config_path.suffix.lower() != ".csv":
+        raise ValueError("Config must be .csv")
+
+    with config_path.open("r", encoding="utf-8-sig", newline="") as file:
+        reader = csv.DictReader(file)
+        rows = list(reader)
+        if not rows:
+            raise ValueError("CSV is empty. Add one row with your data.")
+        data = {k.strip(): str(v).strip() for k, v in rows[0].items()}
 
     aliases = {
         "mobile": "phone",
@@ -294,11 +195,6 @@ def load_user_data(path: str) -> Dict[str, str]:
     for src_key, target_key in aliases.items():
         if src_key in data and target_key not in data:
             data[target_key] = data[src_key]
-
-    required_min = ["full_name", "email"]
-    missing = [key for key in required_min if not data.get(key)]
-    if missing:
-        raise ValueError(f"Missing required data fields: {missing}")
 
     return data
 
@@ -346,14 +242,26 @@ def parse_exam_schedule(raw: str) -> List[Tuple[dt.date, Optional[dt.datetime], 
 
 
 def get_scheduled_city(schedule: List[Tuple[dt.date, Optional[dt.datetime], str]], logger: logging.Logger) -> str:
-    """Return the city for the nearest upcoming (or today's) exam date."""
+    """Return city for the nearest upcoming schedule entry.
+
+    For entries with an explicit datetime, already-past times are skipped.
+    Date-only entries remain valid for the whole day.
+    """
     if not schedule:
         return ""
-    today = dt.date.today()
-    for exam_date, _, city in schedule:
+    now = dt.datetime.now()
+    today = now.date()
+    for exam_date, exam_dt_val, city in schedule:
+        if exam_dt_val is not None:
+            if exam_dt_val >= now:
+                logger.info("Exam schedule: targeting %s (exam date %s)", city, exam_date.isoformat())
+                return city
+            continue
+
         if exam_date >= today:
             logger.info("Exam schedule: targeting %s (exam date %s)", city, exam_date.isoformat())
             return city
+
     # All dates have passed — return the last one as fallback
     last_date, _, last_city = schedule[-1]
     logger.warning("All scheduled exam dates have passed. Using last: %s (%s)", last_city, last_date.isoformat())
@@ -361,10 +269,10 @@ def get_scheduled_city(schedule: List[Tuple[dt.date, Optional[dt.datetime], str]
 
 
 def get_scheduled_exam_dt(schedule: List[Tuple[dt.date, Optional[dt.datetime], str]]) -> Optional[dt.datetime]:
-    """Return the burst-mode datetime for the nearest upcoming exam that has a time set."""
-    today = dt.date.today()
-    for exam_date, exam_dt_val, _ in schedule:
-        if exam_date >= today and exam_dt_val is not None:
+    """Return nearest future datetime for burst mode (skip already-past times)."""
+    now = dt.datetime.now()
+    for _, exam_dt_val, _ in schedule:
+        if exam_dt_val is not None and exam_dt_val >= now:
             return exam_dt_val
     return None
 
@@ -402,13 +310,23 @@ def create_driver(use_headless: bool) -> webdriver.Chrome:
     if use_headless:
         options.add_argument("--headless=new")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--lang=en-US,en")
     options.add_argument("--start-maximized")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("prefs", {"intl.accept_languages": "en-US,en"})
     options.add_experimental_option("detach", True)
 
     service = Service(ChromeDriverManager().install())
-    return webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=service, options=options)
+    try:
+        # Best-effort: reduce obvious automation fingerprint flag.
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    except Exception:
+        pass
+    return driver
 
 
 def is_blocked_response(driver: webdriver.Chrome) -> bool:
@@ -477,7 +395,7 @@ def find_book_buttons(driver: webdriver.Chrome) -> List[WebElement]:
         text_filtered = []
         for item in fallback:
             txt = normalize_text(item.text)
-            if any(token in txt for token in ["book", "next"]):
+            if any(token in txt for token in ["book", "next", "buchen", "weiter"]):
                 text_filtered.append(item)
         buttons = text_filtered
 
@@ -593,133 +511,13 @@ def click_book_for_myself(driver: webdriver.Chrome, logger: logging.Logger, time
     human_move_and_click(driver, button)
 
 
-def find_by_css_candidates(container: webdriver.Chrome, selectors: Sequence[str]) -> Optional[WebElement]:
-    for css in selectors:
-        found = container.find_elements(By.CSS_SELECTOR, css)
-        for element in found:
-            if element.is_displayed():
-                return element
-    return None
-
-
-def find_input_by_label(driver: webdriver.Chrome, keywords: Sequence[str]) -> Optional[WebElement]:
-    labels = driver.find_elements(By.TAG_NAME, "label")
-    for label in labels:
-        text = normalize_text(label.text)
-        if any(key in text for key in keywords):
-            field_id = label.get_attribute("for")
-            if field_id:
-                matches = driver.find_elements(By.ID, field_id)
-                if matches:
-                    return matches[0]
-            try:
-                child_input = label.find_element(By.XPATH, ".//*[self::input or self::select or self::textarea]")
-                return child_input
-            except Exception:
-                continue
-    return None
-
-
-def fill_input_field(driver: webdriver.Chrome, field: WebElement, value: str, logger: logging.Logger) -> None:
-    tag = field.tag_name.lower()
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", field)
-    random_human_delay()
-
-    try:
-        field.click()
-    except Exception:
-        ActionChains(driver).move_to_element(field).click().perform()
-
-    random_human_delay(0.4, 1.0)
-
-    if tag in {"input", "textarea"}:
-        field.clear()
-        random_human_delay(0.3, 0.8)
-        field.send_keys(value)
-    elif tag == "select":
-        from selenium.webdriver.support.ui import Select
-
-        select = Select(field)
-        selected = False
-        for option in select.options:
-            if normalize_text(value) in normalize_text(option.text):
-                select.select_by_visible_text(option.text)
-                selected = True
-                break
-        if not selected:
-            logger.warning("No matching select option for value '%s'.", value)
-    else:
-        field.send_keys(Keys.CONTROL, "a")
-        field.send_keys(Keys.DELETE)
-        field.send_keys(value)
-
-    random_human_delay()
-
-
-def fill_registration_form(driver: webdriver.Chrome, user_data: Dict[str, str], logger: logging.Logger) -> Tuple[int, int]:
-    """
-    Fill fields conservatively and stop before submit.
-    Returns tuple (filled_count, skipped_count).
-    """
-    filled = 0
-    skipped = 0
-
-    for key, value in user_data.items():
-        if not value:
-            continue
-        if key not in FORM_FIELD_CANDIDATES:
-            continue
-
-        field = find_by_css_candidates(driver, FORM_FIELD_CANDIDATES[key])
-        if field is None:
-            field = find_input_by_label(driver, LABEL_KEYWORDS.get(key, []))
-
-        if field is None:
-            skipped += 1
-            logger.warning("Field not found for '%s'. %s", key, FORM_FIELD_CANDIDIDATE_HINT)
-            continue
-
-        try:
-            fill_input_field(driver, field, value, logger)
-            filled += 1
-            logger.info("Filled field: %s", key)
-        except Exception as exc:
-            skipped += 1
-            logger.warning("Failed to fill '%s': %s", key, exc)
-
-    file_inputs = driver.find_elements(By.CSS_SELECTOR, SELECTOR_REFERENCE["file_input_css"])
-    visible_file_inputs = [item for item in file_inputs if item.is_displayed()]
-    if visible_file_inputs:
-        logger.warning("File upload fields detected (%d).", len(visible_file_inputs))
-        print("\nFile upload field(s) detected (passport photo/signature).")
-        answer = input("Type a local file path to upload first visible field, or press Enter to skip: ").strip()
-        if answer:
-            file_path = Path(answer)
-            if file_path.exists():
-                try:
-                    visible_file_inputs[0].send_keys(str(file_path.resolve()))
-                    logger.info("Uploaded file to first visible input: %s", file_path)
-                except Exception as exc:
-                    logger.warning("File upload failed: %s", exc)
-            else:
-                logger.warning("Provided file path does not exist: %s", file_path)
-
-    submit_buttons = driver.find_elements(By.CSS_SELECTOR, SELECTOR_REFERENCE["submit_buttons_css"])
-    if submit_buttons:
-        try:
-            driver.execute_script("arguments[0].style.outline='3px solid orange';", submit_buttons[0])
-        except Exception:
-            pass
-
-    logger.info("Form fill completed. Final submit intentionally NOT clicked.")
-    return filled, skipped
-
-
 def parse_exam_time(raw: str) -> Optional[dt.datetime]:
     """Parse --exam-time into a datetime for today (or full ISO)."""
     raw = raw.strip()
     if not raw:
         return None
+    if raw.lower() == "now":
+        return dt.datetime.now()
     # If user gave just HH:MM:SS or HH:MM, attach today's date
     if "T" not in raw and "-" not in raw:
         today = dt.date.today().isoformat()
@@ -800,6 +598,8 @@ def monitor_and_book(
 
             buttons = find_book_buttons(driver)
             logger.info("Found %d clickable button(s).", len(buttons))
+            if not buttons:
+                logger.info("Debug page state: title='%s' url='%s'", driver.title, driver.current_url)
 
             # Determine preferred city
             if exam_schedule:
@@ -927,8 +727,11 @@ def main() -> int:
     if user_data.get("exam_schedule"):
         schedule = parse_exam_schedule(user_data["exam_schedule"])
         exam_dt = get_scheduled_exam_dt(schedule)
-    if exam_dt is None:
+    if exam_dt is None and args.exam_time.strip().lower() != "now":
         exam_dt = parse_exam_time(args.exam_time)
+    if exam_dt is None:
+        exam_dt = dt.datetime.now()
+        logger.info("No future exam time found; using current time as burst anchor.")
     if exam_dt:
         logger.info("Exam time: %s — burst from %s to %s",
                     exam_dt.strftime("%H:%M:%S"),

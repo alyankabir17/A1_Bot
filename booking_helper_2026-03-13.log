@@ -1,0 +1,165 @@
+2026-03-13 10:14:46,298 [INFO] Logging initialized. File: booking_helper_2026-03-13.log
+2026-03-13 10:14:46,298 [WARNING] Personal single-user use only. Respect Terms of Service.
+2026-03-13 10:14:46,299 [INFO] Exam schedule: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-13 10:14:46,299 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:14:46,299 [INFO] Current target city: Lahore
+2026-03-13 10:14:46,299 [INFO] Exam time: 10:26:00 — burst from 10:25:50 to 10:28:30
+2026-03-13 10:14:52,852 [INFO] Exam schedule loaded: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-13 10:14:52,852 [INFO] ══ STEP 1: Waiting for 'Book Now' button ══
+2026-03-13 10:14:52,852 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:14:57,439 [INFO] Found 0 clickable button(s).
+2026-03-13 10:14:57,440 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:14:57,440 [INFO] No slots. Next check in 47s
+2026-03-13 10:15:49,149 [INFO] Logging initialized. File: booking_helper_2026-03-13.log
+2026-03-13 10:15:49,150 [WARNING] Personal single-user use only. Respect Terms of Service.
+2026-03-13 10:15:49,150 [INFO] Exam schedule: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-13 10:15:49,150 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:15:49,150 [INFO] Current target city: Lahore
+2026-03-13 10:15:49,150 [INFO] Exam time: 10:26:00 — burst from 10:25:50 to 10:28:30
+2026-03-13 10:15:50,356 [INFO] Exam schedule loaded: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-13 10:15:50,356 [INFO] ══ STEP 1: Waiting for 'Book Now' button ══
+2026-03-13 10:15:50,356 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:15:52,184 [ERROR] WebDriver error: Message: no such window: target window already closed
+from unknown error: web view not found
+  (Session info: chrome=146.0.7680.71)
+Stacktrace:
+#0 0x5760b467eaca <unknown>
+#1 0x5760b408fea5 <unknown>
+#2 0x5760b4063828 <unknown>
+#3 0x5760b41111a8 <unknown>
+#4 0x5760b412a568 <unknown>
+#5 0x5760b40d60af <unknown>
+#6 0x5760b40d6e71 <unknown>
+#7 0x5760b4643944 <unknown>
+#8 0x5760b4646841 <unknown>
+#9 0x5760b462ffca <unknown>
+#10 0x5760b464740e <unknown>
+#11 0x5760b4616a30 <unknown>
+#12 0x5760b466b9b8 <unknown>
+#13 0x5760b466bb88 <unknown>
+#14 0x5760b467d50e <unknown>
+#15 0x730cce89caa4 <unknown>
+#16 0x730cce929c6c <unknown>
+. Backoff 5s
+2026-03-13 10:15:57,184 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:15:57,191 [ERROR] WebDriver error: Message: no such window: target window already closed
+from unknown error: web view not found
+  (Session info: chrome=146.0.7680.71)
+Stacktrace:
+#0 0x5760b467eaca <unknown>
+#1 0x5760b408fea5 <unknown>
+#2 0x5760b4063828 <unknown>
+#3 0x5760b41111a8 <unknown>
+#4 0x5760b412a568 <unknown>
+#5 0x5760b40d60af <unknown>
+#6 0x5760b40d6e71 <unknown>
+#7 0x5760b4643944 <unknown>
+#8 0x5760b4646841 <unknown>
+#9 0x5760b462ffca <unknown>
+#10 0x5760b464740e <unknown>
+#11 0x5760b4616a30 <unknown>
+#12 0x5760b466b9b8 <unknown>
+#13 0x5760b466bb88 <unknown>
+#14 0x5760b467d50e <unknown>
+#15 0x730cce89caa4 <unknown>
+#16 0x730cce929c6c <unknown>
+. Backoff 10s
+2026-03-13 10:16:07,192 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:16:07,199 [ERROR] WebDriver error: Message: no such window: target window already closed
+from unknown error: web view not found
+  (Session info: chrome=146.0.7680.71)
+Stacktrace:
+#0 0x5760b467eaca <unknown>
+#1 0x5760b408fea5 <unknown>
+#2 0x5760b4063828 <unknown>
+#3 0x5760b41111a8 <unknown>
+#4 0x5760b412a568 <unknown>
+#5 0x5760b40d60af <unknown>
+#6 0x5760b40d6e71 <unknown>
+#7 0x5760b4643944 <unknown>
+#8 0x5760b4646841 <unknown>
+#9 0x5760b462ffca <unknown>
+#10 0x5760b464740e <unknown>
+#11 0x5760b4616a30 <unknown>
+#12 0x5760b466b9b8 <unknown>
+#13 0x5760b466bb88 <unknown>
+#14 0x5760b467d50e <unknown>
+#15 0x730cce89caa4 <unknown>
+#16 0x730cce929c6c <unknown>
+. Backoff 20s
+2026-03-13 10:16:27,200 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:16:27,212 [ERROR] WebDriver error: Message: no such window: target window already closed
+from unknown error: web view not found
+  (Session info: chrome=146.0.7680.71)
+Stacktrace:
+#0 0x5760b467eaca <unknown>
+#1 0x5760b408fea5 <unknown>
+#2 0x5760b4063828 <unknown>
+#3 0x5760b41111a8 <unknown>
+#4 0x5760b412a568 <unknown>
+#5 0x5760b40d60af <unknown>
+#6 0x5760b40d6e71 <unknown>
+#7 0x5760b4643944 <unknown>
+#8 0x5760b4646841 <unknown>
+#9 0x5760b462ffca <unknown>
+#10 0x5760b464740e <unknown>
+#11 0x5760b4616a30 <unknown>
+#12 0x5760b466b9b8 <unknown>
+#13 0x5760b466bb88 <unknown>
+#14 0x5760b467d50e <unknown>
+#15 0x730cce89caa4 <unknown>
+#16 0x730cce929c6c <unknown>
+. Backoff 40s
+2026-03-13 10:17:07,213 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:17:07,223 [ERROR] WebDriver error: Message: no such window: target window already closed
+from unknown error: web view not found
+  (Session info: chrome=146.0.7680.71)
+Stacktrace:
+#0 0x5760b467eaca <unknown>
+#1 0x5760b408fea5 <unknown>
+#2 0x5760b4063828 <unknown>
+#3 0x5760b41111a8 <unknown>
+#4 0x5760b412a568 <unknown>
+#5 0x5760b40d60af <unknown>
+#6 0x5760b40d6e71 <unknown>
+#7 0x5760b4643944 <unknown>
+#8 0x5760b4646841 <unknown>
+#9 0x5760b462ffca <unknown>
+#10 0x5760b464740e <unknown>
+#11 0x5760b4616a30 <unknown>
+#12 0x5760b466b9b8 <unknown>
+#13 0x5760b466bb88 <unknown>
+#14 0x5760b467d50e <unknown>
+#15 0x730cce89caa4 <unknown>
+#16 0x730cce929c6c <unknown>
+. Backoff 80s
+2026-03-13 10:17:11,306 [INFO] Interrupted by user. Exiting.
+2026-03-13 10:30:08,696 [INFO] Logging initialized. File: booking_helper_2026-03-13.log
+2026-03-13 10:30:08,696 [WARNING] Personal single-user use only. Respect Terms of Service.
+2026-03-13 10:30:08,697 [INFO] Exam schedule: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-13 10:30:08,697 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:30:08,697 [INFO] Current target city: Lahore
+2026-03-13 10:30:08,697 [INFO] Exam time: 10:26:00 — burst from 10:25:50 to 10:28:30
+2026-03-13 10:30:10,285 [INFO] Exam schedule loaded: 2026-03-13 @ 10:26:00 -> Lahore, 2026-03-27 -> Karachi
+2026-03-13 10:30:10,286 [INFO] ══ STEP 1: Waiting for 'Book Now' button ══
+2026-03-13 10:30:10,286 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:30:14,188 [INFO] Found 0 clickable button(s).
+2026-03-13 10:30:14,189 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:30:14,189 [INFO] No slots. Next check in 40s
+2026-03-13 10:30:54,189 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:30:55,458 [INFO] Found 0 clickable button(s).
+2026-03-13 10:30:55,458 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:30:55,458 [INFO] No slots. Next check in 44s
+2026-03-13 10:31:39,458 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:31:40,807 [INFO] Found 0 clickable button(s).
+2026-03-13 10:31:40,807 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:31:40,808 [INFO] No slots. Next check in 42s
+2026-03-13 10:32:22,808 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:32:23,949 [INFO] Found 0 clickable button(s).
+2026-03-13 10:32:23,949 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:32:23,950 [INFO] No slots. Next check in 46s
+2026-03-13 10:33:09,950 [INFO] Opening: https://www.goethe.de/ins/pk/en/spr/prf/gzsd1.cfm
+2026-03-13 10:33:11,022 [INFO] Found 0 clickable button(s).
+2026-03-13 10:33:11,022 [INFO] Exam schedule: targeting Lahore (exam date 2026-03-13)
+2026-03-13 10:33:11,022 [INFO] No slots. Next check in 57s
+2026-03-13 10:33:57,710 [INFO] Interrupted by user. Exiting.
